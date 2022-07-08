@@ -12,8 +12,8 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/shundezhang/oidc-config/pkg/aws"
 	"github.com/shundezhang/oidc-config/pkg/logger"
-	"github.com/shundezhang/oidc-config/pkg/s3"
 	"github.com/spf13/cobra"
 )
 
@@ -21,6 +21,7 @@ const (
 	kubeConfigPath = "kubeconfig"
 	outputFormat   = "output"
 	uploadFlag     = "upload-to-s3"
+	awsProfile     = "aws-profile"
 )
 
 type Oidc struct {
@@ -36,7 +37,7 @@ var viewCmd = &cobra.Command{
 	Long:  `get oidc content in configure`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log := logger.NewLogger()
-		log.Info("")
+		// log.Info("")
 		configPath, err := cmd.Flags().GetString(kubeConfigPath)
 		if err != nil {
 			return
@@ -46,6 +47,10 @@ var viewCmd = &cobra.Command{
 			return
 		}
 		upload, err := cmd.Flags().GetBool(uploadFlag)
+		if err != nil {
+			return
+		}
+		profile, err := cmd.Flags().GetString(awsProfile)
 		if err != nil {
 			return
 		}
@@ -86,7 +91,11 @@ var viewCmd = &cobra.Command{
 				return
 			}
 			bucket := strings.Split(u.Hostname(), ".")[0]
-			s3.UploadToS3(bucket, u.Path+"/.well-known/openid-configuration", string(config), u.Path+"/openid/v1/jwks", jwks)
+			err1 := aws.UploadToS3(profile, bucket, u.Path+"/.well-known/openid-configuration", string(config), u.Path+"/openid/v1/jwks", string(jwks))
+			if err1 != nil {
+				log.Error(err1)
+				return
+			}
 		}
 	},
 }
@@ -122,4 +131,5 @@ func init() {
 	viewCmd.Flags().String(kubeConfigPath, "", "Path to kubeconfig")
 	viewCmd.Flags().StringP(outputFormat, "o", "", "output format: default, yaml or json")
 	viewCmd.Flags().Bool(uploadFlag, false, "Upload config and jwks to s3 bucket")
+	viewCmd.Flags().String(awsProfile, "default", "AWS profile name in .aws/config")
 }
