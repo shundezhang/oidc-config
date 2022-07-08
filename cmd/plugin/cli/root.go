@@ -70,7 +70,7 @@ func getKubernetesConfig(kubePath string) (*rest.Config, error) {
 			return nil, err
 		}
 	}
-	fmt.Printf("%s %s\n", config.Host, config.BearerToken)
+
 	return config, err
 }
 
