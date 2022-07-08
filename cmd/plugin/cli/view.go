@@ -2,12 +2,13 @@ package cli
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 
+	"net/http"
+	"time"
+
 	"github.com/spf13/cobra"
-	api "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -25,54 +26,39 @@ var viewCmd = &cobra.Command{
 		if err != nil {
 			return
 		}
-		serviceAccountName, err := cmd.Flags().GetString(saName)
-		if err != nil {
-			log.Fatal("unable to get service account name")
-			return
-		}
-		serviceAccountNameSpace, err := cmd.Flags().GetString(saNameSpace)
-		if err != nil {
-			log.Fatal("unable to get service account namespace")
-			return
-		}
-		k, err := getKubernetesClient(configPath)
+		c, err := getKubernetesConfig(configPath)
 		if err != nil {
 			log.Fatal(err)
+			return
 		}
-		sa, err := k.CoreV1().ServiceAccounts(serviceAccountNameSpace).Get(serviceAccountName, metav1.GetOptions{})
-		if errors.IsNotFound(err) {
+		config, err := get(c.Host+"/.well-known/openid-configuration", c.BearerToken)
+		if err != nil {
 			log.Fatal(err)
 			return
 		}
-		if err != nil {
-			fmt.Printf("unable to get service account %s/%s", serviceAccountName, serviceAccountNameSpace)
-			return
-		}
-		for _, ref := range sa.Secrets {
-			secret, err := k.CoreV1().Secrets(serviceAccountNameSpace).Get(ref.Name, metav1.GetOptions{})
-			if errors.IsNotFound(err) {
-				fmt.Printf("secret %s/%s not found", serviceAccountName, ref.Name)
-				continue
-			}
-			if err != nil {
-				fmt.Printf("unable to get secret %s/%s", serviceAccountName, ref.Name)
-				return
-			}
-			if secret.Type != api.SecretTypeServiceAccountToken {
-				fmt.Printf("secret %s/%s is not a service account token", serviceAccountName, ref.Name)
-				continue
-			}
-
-			tokenData := secret.Data[api.ServiceAccountTokenKey]
-			fmt.Printf("token: %s", string(tokenData[:]))
-		}
-
+		fmt.Println(config)
 	},
+}
+
+func get(url, token string) ([]byte, error) {
+	client := &http.Client{
+		Timeout: time.Second * 10,
+	}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("Got error %s", err.Error())
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	response, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Got error %s", err.Error())
+	}
+	data, _ := ioutil.ReadAll(response.Body)
+	defer response.Body.Close()
+	return data, nil
 }
 
 func init() {
 	rootCmd.AddCommand(viewCmd)
 	viewCmd.Flags().String(kubeConfigPath, "", "Path to kubeconfig")
-	viewCmd.Flags().String(saName, "default", "Service Account Name")
-	viewCmd.Flags().String(saNameSpace, "default", "Service Account NameSpace")
 }
