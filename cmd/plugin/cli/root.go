@@ -7,13 +7,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 var (
 	KubernetesConfigFlags *genericclioptions.ConfigFlags
+	awsProfile            = "aws-profile"
+	kubeConfigPath        = "kubeconfig"
 )
 
 var rootCmd = &cobra.Command{
@@ -31,58 +30,10 @@ func Execute() {
 
 func init() {
 	cobra.OnInitialize(initConfig)
+	rootCmd.PersistentFlags().String(kubeConfigPath, "", "Path to kubeconfig")
+	rootCmd.PersistentFlags().String(awsProfile, "default", "AWS profile name in .aws/config")
 }
 
 func initConfig() {
 	viper.AutomaticEnv()
-}
-
-func getKubernetesConfigInCluster() (*rest.Config, error) {
-	var config *rest.Config
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return getKubernetesLocalConfig()
-	}
-	return config, nil
-}
-
-func getKubernetesLocalConfig() (*rest.Config, error) {
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	clientCfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
-	return clientCfg.ClientConfig()
-}
-
-func getKubernetesConfig(kubePath string) (*rest.Config, error) {
-	var (
-		config *rest.Config
-		err    error
-	)
-
-	// if kubeconfig path is not provided, try to auto detect
-	if kubePath == "" {
-		config, err = getKubernetesConfigInCluster()
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		config, err = clientcmd.BuildConfigFromFlags("", kubePath)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return config, err
-}
-
-func getKubernetesClient(kubePath string) (kubernetes.Interface, error) {
-	config, err := getKubernetesConfig(kubePath)
-	if err != nil {
-		return nil, err
-	}
-	client, err := kubernetes.NewForConfig(config)
-
-	if err != nil {
-		return nil, err
-	}
-	return client, nil
 }

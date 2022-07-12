@@ -1,27 +1,23 @@
 package cli
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"strings"
 
-	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/shundezhang/oidc-config/pkg/aws"
+	"github.com/shundezhang/oidc-config/pkg/k8s"
 	"github.com/shundezhang/oidc-config/pkg/logger"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 const (
-	kubeConfigPath = "kubeconfig"
-	outputFormat   = "output"
-	uploadFlag     = "upload-to-s3"
-	awsProfile     = "aws-profile"
+	outputFormat           = "output"
+	uploadFlag             = "upload-to-s3"
+	createOidcProviderFlag = "create-oidc-provider"
 )
 
 type Oidc struct {
@@ -31,8 +27,8 @@ type Oidc struct {
 	jwksContent   string
 }
 
-var viewCmd = &cobra.Command{
-	Use:   "view",
+var getCmd = &cobra.Command{
+	Use:   "get",
 	Short: "get oidc content",
 	Long:  `get oidc content in configure`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -40,26 +36,35 @@ var viewCmd = &cobra.Command{
 		// log.Info("")
 		configPath, err := cmd.Flags().GetString(kubeConfigPath)
 		if err != nil {
+			log.Error(err)
 			return
 		}
 		output, err := cmd.Flags().GetString(outputFormat)
 		if err != nil {
+			log.Error(err)
 			return
 		}
 		upload, err := cmd.Flags().GetBool(uploadFlag)
 		if err != nil {
+			log.Error(err)
 			return
 		}
-		profile, err := cmd.Flags().GetString(awsProfile)
-		if err != nil {
-			return
-		}
-		c, err := getKubernetesConfig(configPath)
+		create, err := cmd.Flags().GetBool(createOidcProviderFlag)
 		if err != nil {
 			log.Error(err)
 			return
 		}
-		config, err := get(c.Host+"/.well-known/openid-configuration", c.BearerToken, c.CAData)
+		profile, err := cmd.Flags().GetString(awsProfile)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		c, err := k8s.GetKubernetesConfig(configPath)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		config, err := k8s.GetURL(c.Host+"/.well-known/openid-configuration", c.BearerToken, c.CAData)
 		if err != nil {
 			log.Error(err)
 			return
@@ -68,7 +73,7 @@ var viewCmd = &cobra.Command{
 		if err := json.Unmarshal([]byte(config), &objmap); err != nil {
 			log.Error(err)
 		}
-		jwks, err := get(c.Host+"/openid/v1/jwks", c.BearerToken, c.CAData)
+		jwks, err := k8s.GetURL(c.Host+"/openid/v1/jwks", c.BearerToken, c.CAData)
 		if err != nil {
 			log.Error(err)
 			return
@@ -78,7 +83,29 @@ var viewCmd = &cobra.Command{
 			fmt.Println(string(config))
 			fmt.Println(objmap["jwks_uri"])
 			fmt.Println(string(jwks))
-		} else if output == "json" {
+		} else {
+			outmap := make(map[string]interface{})
+			outmap["configURL"] = fmt.Sprintf("%v/.well-known/openid-configuration", objmap["issuer"])
+			outmap["configContent"] = string(config)
+			outmap["jwksURL"] = objmap["jwks_uri"]
+			outmap["jwksContent"] = string(jwks)
+			if output == "json" {
+				b, err := json.MarshalIndent(outmap, "", "  ")
+				if err != nil {
+					log.Error(err)
+					return
+				}
+				fmt.Println(string(b))
+			} else if output == "yaml" {
+				out, err := yaml.Marshal(outmap)
+				if err != nil {
+					log.Error(err)
+				}
+
+				fmt.Println(string(out))
+			} else {
+				log.Info("output format %s not supported.", output)
+			}
 		}
 		if upload {
 			u, err := url.Parse(fmt.Sprintf("%v", objmap["issuer"]))
@@ -97,39 +124,19 @@ var viewCmd = &cobra.Command{
 				return
 			}
 		}
+		if create {
+			err1 := aws.CreateOIDCProvider(profile, fmt.Sprintf("%v", objmap["issuer"]))
+			if err1 != nil {
+				log.Error(err1)
+				return
+			}
+		}
 	},
 }
 
-func get(url string, token string, ca []byte) ([]byte, error) {
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(ca)
-
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				RootCAs: caCertPool,
-			},
-		},
-		Timeout: time.Second * 10,
-	}
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("Got error %s", err.Error())
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	response, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("Got error %s", err.Error())
-	}
-	data, _ := ioutil.ReadAll(response.Body)
-	defer response.Body.Close()
-	return data, nil
-}
-
 func init() {
-	rootCmd.AddCommand(viewCmd)
-	viewCmd.Flags().String(kubeConfigPath, "", "Path to kubeconfig")
-	viewCmd.Flags().StringP(outputFormat, "o", "", "output format: default, yaml or json")
-	viewCmd.Flags().Bool(uploadFlag, false, "Upload config and jwks to s3 bucket")
-	viewCmd.Flags().String(awsProfile, "default", "AWS profile name in .aws/config")
+	rootCmd.AddCommand(getCmd)
+	getCmd.Flags().StringP(outputFormat, "o", "", "output format: default, yaml or json")
+	getCmd.Flags().Bool(uploadFlag, false, "Upload config and jwks to s3 bucket")
+	getCmd.Flags().Bool(createOidcProviderFlag, false, "Create OIDC provider in IAM")
 }
