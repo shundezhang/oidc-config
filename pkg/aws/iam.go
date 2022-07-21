@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/prometheus/common/log"
+
 	"github.com/shundezhang/oidc-config/pkg/logger"
 )
 
@@ -84,7 +84,7 @@ func CreateOIDCProvider(profile, providerUrl string) error {
 func getThumbPrint(httpsUrl string) string {
 	u, err := url.Parse(httpsUrl)
 	if err != nil {
-		log.Error(err)
+		fmt.Println(err)
 		return ""
 	}
 	add := u.Hostname()

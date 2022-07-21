@@ -22,8 +22,8 @@ const (
 
 var createRoleCmd = &cobra.Command{
 	Use:   "create-role",
-	Short: "create a role for sa",
-	Long:  `create a role for sa`,
+	Short: "create a role in IAM and a service account in k8s",
+	Long:  `create a role in IAM and a service account in k8s`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log := logger.NewLogger()
 		// configPath, err := cmd.Flags().GetString(kubeConfigPath)

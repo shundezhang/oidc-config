@@ -1,6 +1,7 @@
 package k8s
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/shundezhang/oidc-config/pkg/logger"
@@ -26,7 +27,7 @@ func CreateSA(kubePath, saName, saNameSpace, roleArn string) error {
 			},
 		},
 	}
-	result, err := saClient.Create(sa)
+	result, err := saClient.Create(context.TODO(), sa, metav1.CreateOptions{})
 	if err != nil {
 		return err
 	}

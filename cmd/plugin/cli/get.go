@@ -29,8 +29,8 @@ type Oidc struct {
 
 var getCmd = &cobra.Command{
 	Use:   "get",
-	Short: "get oidc content",
-	Long:  `get oidc content in configure`,
+	Short: "get oidc config content, upload to s3 and create oidc provider",
+	Long:  `get oidc config content, upload to s3 and create oidc provider`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log := logger.NewLogger()
 		// log.Info("")
